@@ -1,0 +1,29 @@
+[11/30 17:51:34] eval INFO: load global model from D:\githubdownloads\Fed3DGS_data\global-models\building\global_model.pth
+[11/30 17:51:34] eval INFO: #Gaussians 4566852
+[11/30 17:51:34] eval INFO: load metadata
+[11/30 17:51:34] eval INFO: evaluate
+[11/30 18:12:45] eval INFO: loss : 0.020745540037751198 -> 0.020738128572702408
+[11/30 18:12:53] eval INFO: 000000.jpg
+[11/30 19:18:03] eval INFO: load global model from D:\githubdownloads\Fed3DGS_data\global-models\building\global_model.pth
+[11/30 19:18:03] eval INFO: #Gaussians 4566852
+[11/30 19:18:03] eval INFO: load metadata
+[11/30 19:18:03] eval INFO: evaluate
+[11/30 19:48:27] eval INFO: load global model from D:\githubdownloads\Fed3DGS_data\global-models\building\global_model.pth
+[11/30 19:48:27] eval INFO: #Gaussians 4566852
+[11/30 19:48:27] eval INFO: load metadata
+[11/30 19:48:27] eval INFO: evaluate
+[11/30 20:24:20] eval INFO: loss : 0.020745540037751198 -> 0.020738128572702408
+[11/30 20:24:33] eval INFO: 000000.jpg
+[11/30 20:24:38] eval INFO: PSNR: 17.58757972717285
+[11/30 20:24:38] eval INFO: SSIM: 0.5099701881408691
+[11/30 20:24:38] eval INFO: LPIPS: 0.5031501054763794
+[11/30 20:53:23] eval INFO: loss : 0.037196021527051926 -> 0.03459016606211662
+[11/30 20:53:27] eval INFO: 000097.jpg
+[11/30 20:53:30] eval INFO: PSNR: 18.471084594726562
+[11/30 20:53:30] eval INFO: SSIM: 0.43208998441696167
+[11/30 20:53:30] eval INFO: LPIPS: 0.472977876663208
+[11/30 21:28:07] eval INFO: loss : 0.008329580537974834 -> 0.007872202433645725
+[11/30 21:28:07] eval INFO: 000194.jpg
+[11/30 21:28:09] eval INFO: PSNR: 12.669791221618652
+[11/30 21:28:09] eval INFO: SSIM: 0.32248106598854065
+[11/30 21:28:09] eval INFO: LPIPS: 0.4282187819480896

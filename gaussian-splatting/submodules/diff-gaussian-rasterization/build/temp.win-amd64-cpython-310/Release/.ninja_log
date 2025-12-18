@@ -1,0 +1,6 @@
+# ninja log v7
+0	9044	7857007489245252	D:/githubdownloads/Fed3DGS/gaussian-splatting/submodules/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/cuda_rasterizer/backward.obj	35aaa51cbad389db
+51	9089	7857007489743210	D:/githubdownloads/Fed3DGS/gaussian-splatting/submodules/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/cuda_rasterizer/forward.obj	c5954adeb52752af
+148	14042	7857007490714487	D:/githubdownloads/Fed3DGS/gaussian-splatting/submodules/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/ext.obj	9bae4119641b5b14
+99	14946	7857007490233322	D:/githubdownloads/Fed3DGS/gaussian-splatting/submodules/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/cuda_rasterizer/rasterizer_impl.obj	a32109311c430cd3
+155	40449	7857007490784487	D:/githubdownloads/Fed3DGS/gaussian-splatting/submodules/diff-gaussian-rasterization/build/temp.win-amd64-cpython-310/Release/rasterize_points.obj	ed137621b19d23b4
