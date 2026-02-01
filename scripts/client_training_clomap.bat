@@ -3,13 +3,11 @@ setlocal EnableDelayedExpansion
 
 :: ==========================================
 :: Windows Batch Script for Fed3DGS Training
-:: 使用已分配的点云（跳过三角化步骤）
+:: (English only to avoid encoding errors)
 :: ==========================================
 
 if "%~6"=="" (
-    echo Usage: scripts\client_training_with_pointcloud.bat start_idx end_idx colmap_dir dataset_root image_list_dir output_dir
-    echo.
-    echo Note: This script skips triangulation and uses pre-distributed point clouds.
+    echo Usage: scripts\client_training.bat start_idx end_idx colmap_dir dataset_root image_list_dir output_dir
     exit /b 1
 )
 
@@ -38,29 +36,26 @@ for /L %%i in (%START_IDX%, 1, %END_IDX%) do (
     set "CUR_OUTPUT_DIR=!OUTPUT_DIR!\!SEQ_ID!"
     set "RGBS_DIR=!TRAIN_DIR!\rgbs"
 
-    :: Check if COLMAP directory exists
-    if not exist "!CUR_COLMAP_DIR!\sparse\0\points3D.bin" (
-        if not exist "!CUR_COLMAP_DIR!\sparse\0\points3D.txt" (
-            echo [ERROR] Point cloud not found for sequence !SEQ_ID!
-            echo Expected: !CUR_COLMAP_DIR!\sparse\0\points3D.bin or .txt
-            echo Skipping...
-            goto :next_client
-        )
+    :: Step 1: Try to run triangulation
+    :: If tools\triangulate_colmap.bat exists, run it.
+    if exist "tools\triangulate_colmap.bat" (
+        echo Running triangulation...
+        call tools\triangulate_colmap.bat "!CUR_COLMAP_DIR!" "!TRAIN_DIR!" "!IMG_LIST!"
+    ) else (
+        echo [WARNING] tools\triangulate_colmap.bat not found. Skipping triangulation.
+        echo Ensure your COLMAP data is already prepared.
     )
-
-    echo Using pre-distributed point cloud from: !CUR_COLMAP_DIR!
-    echo Skipping triangulation step.
 
     :: Step 2: Run Gaussian Splatting Training
     echo Running training...
     python gaussian-splatting\train.py -s "!CUR_COLMAP_DIR!" -i "!RGBS_DIR!" -w -m "!CUR_OUTPUT_DIR!" 
+    ::--iterations 3000 -r 2
+    :: --iterations 3000 : 将迭代次数限制为 3000 (默认通常是 30000)
+    :: -r 2              : 对图像进行 2 倍下采样训练 (分辨率变小，速度变快)
     if errorlevel 1 (
         echo [ERROR] Training failed for sequence !SEQ_ID!
     )
-
-    :next_client
 )
 
 echo All done.
 endlocal
-
