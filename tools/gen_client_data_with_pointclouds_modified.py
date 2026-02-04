@@ -263,13 +263,44 @@ if __name__=='__main__':
     
     # 建立图像文件名到COLMAP image_id的映射
     print('建立图像文件名映射...')
+    
+    # 方法1：通过COLMAP原始图像名建立映射
     image_name_to_colmap_id = {}
     for image_id, image in colmap_images.items():
         image_name = image.name
         # 只保留文件名（去除路径）
         image_name_base = os.path.basename(image_name)
         image_name_to_colmap_id[image_name_base] = image_id
-    print(f'  建立了 {len(image_name_to_colmap_id)} 个图像映射')
+    
+    # 方法2：通过mappings.txt建立Fed3DGS图像名到COLMAP image_id的映射
+    # mappings.txt格式：{原始COLMAP图像名},{new_index}.pt
+    fed3dgs_name_to_colmap_id = {}
+    mappings_file = dataset_dir / "mappings.txt"
+    if mappings_file.exists():
+        print(f'  读取mappings.txt: {mappings_file}')
+        with open(mappings_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split(',')
+                if len(parts) >= 2:
+                    colmap_original_name = parts[0].strip()
+                    new_index_pt = parts[1].strip()  # 例如 "000001.pt"
+                    new_index = Path(new_index_pt).stem  # 例如 "000001"
+                    fed3dgs_image_name = f"{new_index}.jpg"  # 例如 "000001.jpg"
+                    
+                    # 查找对应的COLMAP image_id
+                    colmap_original_name_base = os.path.basename(colmap_original_name)
+                    if colmap_original_name_base in image_name_to_colmap_id:
+                        colmap_image_id = image_name_to_colmap_id[colmap_original_name_base]
+                        fed3dgs_name_to_colmap_id[fed3dgs_image_name] = colmap_image_id
+        print(f'  通过mappings.txt建立了 {len(fed3dgs_name_to_colmap_id)} 个Fed3DGS图像映射')
+    else:
+        print(f'  警告: mappings.txt不存在: {mappings_file}')
+        print('  将尝试使用COLMAP原始图像名进行映射（可能失败）')
+    
+    print(f'  总共建立了 {len(image_name_to_colmap_id)} 个COLMAP图像映射')
     
     # 读取图像文件名
     fnames = sorted(os.listdir(train_rgbs_dir))
@@ -335,16 +366,26 @@ if __name__=='__main__':
         image_list = []
         pointcloud_bin_files = []  # 存储点云.bin文件路径和对应的图像索引
         selected_colmap_image_ids = []  # 存储选中的COLMAP image_id
+        colmap_id_to_fed3dgs_name_direct = {}  # 直接建立COLMAP image_id到Fed3DGS图像名的映射（避免反向查找）
         
         # 处理每个图像
         for fname in selected_fnames:
             image_index = Path(fname).stem  # 例如 "000001"
-            image_list.append(fname)
             
             # 查找COLMAP中的image_id
-            if fname in image_name_to_colmap_id:
+            # 优先使用mappings.txt建立的映射
+            colmap_image_id = None
+            if fname in fed3dgs_name_to_colmap_id:
+                colmap_image_id = fed3dgs_name_to_colmap_id[fname]
+            elif fname in image_name_to_colmap_id:
+                # 回退到直接匹配（可能不准确）
                 colmap_image_id = image_name_to_colmap_id[fname]
+            
+            if colmap_image_id is not None:
                 selected_colmap_image_ids.append(colmap_image_id)
+                image_list.append(fname)  # 只有在找到colmap_image_id后才添加到image_list
+                # 直接建立映射：colmap_image_id -> fname
+                colmap_id_to_fed3dgs_name_direct[colmap_image_id] = fname
             else:
                 if args.warn_missing_pointclouds:
                     print(f"  警告: 客户端 {client_id} 的图像 {fname} 在COLMAP中未找到")
@@ -398,19 +439,79 @@ if __name__=='__main__':
             image_id_mapping[old_image_id] = new_image_id
             new_image_id += 1
         
-        # 4. 创建新的图像和相机字典（使用新ID）
+        # 4. 先合并点云（如果存在），以便更新point3D_ids和后续处理
+        merged_points_raw = {}
+        if pointcloud_bin_files:
+            bin_file_paths = [bin_path for _, bin_path, _ in pointcloud_bin_files]
+            merged_points_raw = merge_pointclouds_for_client(
+                bin_file_paths,
+                merge_strategy=args.merge_strategy
+            )
+        
+        # 建立点ID集合（合并后的点云中实际存在的点ID）
+        available_point_ids = set(merged_points_raw.keys()) if merged_points_raw else set()
+        
+        # 5. 创建新的图像和相机字典（使用新ID）
+        # 建立COLMAP image_id到Fed3DGS图像名的映射（用于更新image.name）
+        # 优先使用直接建立的映射（在370-402行处理图像时建立）
+        colmap_id_to_fed3dgs_name = {}
+        for old_image_id, image in client_images.items():
+            # 优先使用直接建立的映射（最准确）
+            if old_image_id in colmap_id_to_fed3dgs_name_direct:
+                colmap_id_to_fed3dgs_name[old_image_id] = colmap_id_to_fed3dgs_name_direct[old_image_id]
+            else:
+                # 回退到反向查找（可能不准确）
+                colmap_name = image.name
+                colmap_name_base = os.path.basename(colmap_name)
+                fed3dgs_name = None
+                # 通过mappings.txt查找对应的Fed3DGS图像名
+                for fed3dgs_img_name, mapped_colmap_id in fed3dgs_name_to_colmap_id.items():
+                    if mapped_colmap_id == old_image_id:
+                        fed3dgs_name = fed3dgs_img_name
+                        break
+                # 如果mappings.txt中没找到，尝试直接匹配图像名
+                if fed3dgs_name is None:
+                    if colmap_name_base in fnames:
+                        fed3dgs_name = colmap_name_base
+                # 如果找到了，记录映射
+                if fed3dgs_name is not None:
+                    colmap_id_to_fed3dgs_name[old_image_id] = fed3dgs_name
+        
         new_client_images = {}
         for old_image_id, image in client_images.items():
             new_image_id = image_id_mapping[old_image_id]
             new_camera_id = camera_id_mapping[image.camera_id]
+            
+            # 更新point3D_ids：只保留在合并后点云中实际存在的点ID
+            # point3D_ids是一个数组，-1表示无效点
+            updated_point3D_ids = image.point3D_ids.copy()
+            for i, point_id in enumerate(image.point3D_ids):
+                if point_id != -1 and point_id not in available_point_ids:
+                    # 如果点不在合并后的点云中，标记为无效
+                    updated_point3D_ids[i] = -1
+            
+            # 更新图像名：使用Fed3DGS数据集中的图像名
+            updated_image_name = colmap_id_to_fed3dgs_name.get(old_image_id)
+            if updated_image_name is None:
+                # 如果找不到映射，使用COLMAP原始图像名（可能不匹配，但至少不会崩溃）
+                updated_image_name = os.path.basename(image.name)
+                print(f"  警告: 客户端 {client_id} 的图像 (COLMAP ID: {old_image_id}, 名称: {image.name}) 找不到Fed3DGS映射，使用COLMAP原始名称")
+            
+            # 确保图像文件存在
+            image_path = train_rgbs_dir / updated_image_name
+            if not image_path.exists():
+                # 如果图像不存在，跳过该图像（不添加到new_client_images）
+                print(f"  警告: 客户端 {client_id} 的图像 {updated_image_name} (COLMAP: {image.name}) 在Fed3DGS数据集中不存在，跳过")
+                continue
+            
             new_client_images[new_image_id] = Image(
                 id=new_image_id,
                 qvec=image.qvec,
                 tvec=image.tvec,
                 camera_id=new_camera_id,
-                name=image.name,
+                name=updated_image_name,  # 使用Fed3DGS图像名
                 xys=image.xys,
-                point3D_ids=image.point3D_ids
+                point3D_ids=updated_point3D_ids
             )
         
         new_client_cameras = {}
@@ -424,21 +525,17 @@ if __name__=='__main__':
                 params=camera.params
             )
         
-        # 5. 合并点云并更新image_ids
+        # 6. 更新点云中的image_ids以匹配新的image_id
         merged_points = {}
-        if pointcloud_bin_files:
-            # 收集所有点云文件路径
-            bin_file_paths = [bin_path for _, bin_path, _ in pointcloud_bin_files]
-            
-            # 合并点云
-            merged_points = merge_pointclouds_for_client(
-                bin_file_paths,
-                merge_strategy=args.merge_strategy
-            )
+        point_stats = {'total_before': 0, 'total_after': 0, 'points_with_matching_ids': 0, 'points_without_matching_ids': 0}
+        
+        if merged_points_raw:
+            point_stats['total_before'] = len(merged_points_raw)
             
             # 更新点云中的image_ids以匹配新的image_id
+            # 改进：保留所有点，即使image_ids不匹配
             updated_points = {}
-            for point_id, point in merged_points.items():
+            for point_id, point in merged_points_raw.items():
                 # 更新image_ids：将旧的COLMAP image_id映射到新的image_id
                 new_image_ids = []
                 new_point2D_idxs = []
@@ -450,6 +547,7 @@ if __name__=='__main__':
                         new_point2D_idxs.append(pt2d_idx)
                 
                 if len(new_image_ids) > 0:
+                    # 有匹配的image_ids，正常保留
                     updated_points[point_id] = Point3D(
                         id=point.id,
                         xyz=point.xyz,
@@ -458,7 +556,28 @@ if __name__=='__main__':
                         image_ids=np.array(new_image_ids, dtype=np.int32),
                         point2D_idxs=np.array(new_point2D_idxs, dtype=np.int32)
                     )
+                    point_stats['points_with_matching_ids'] += 1
+                else:
+                    # 没有匹配的image_ids，但仍然保留点（只保留xyz和rgb，用于3DGS初始化）
+                    updated_points[point_id] = Point3D(
+                        id=point.id,
+                        xyz=point.xyz,
+                        rgb=point.rgb,
+                        error=point.error,
+                        image_ids=np.array([], dtype=np.int32),  # 空数组
+                        point2D_idxs=np.array([], dtype=np.int32)
+                    )
+                    point_stats['points_without_matching_ids'] += 1
+            
             merged_points = updated_points
+            point_stats['total_after'] = len(merged_points)
+            
+            # 打印统计信息（仅在有大量点丢失时）
+            if point_stats['points_without_matching_ids'] > 0:
+                loss_rate = point_stats['points_without_matching_ids'] / point_stats['total_before'] * 100
+                if loss_rate > 5.0:  # 丢失率超过5%时警告
+                    print(f"  警告: 客户端 {client_id} 有 {point_stats['points_without_matching_ids']}/{point_stats['total_before']} "
+                          f"个点({loss_rate:.1f}%)的image_ids不匹配，但已保留这些点")
         
         # 6. 保存文件到 {client_id}/sparse/0/
         if len(new_client_images) > 0 and len(new_client_cameras) > 0:
